@@ -1,7 +1,7 @@
 {
   "name": "magpie-su8",
-  "version": "0.1.0",
-  "description": "SU8 Codes for magpie: sign in with an SU8 API key, use the models it can call, and see the plan allowance and balance",
+  "version": "0.2.0",
+  "description": "SU8 Codes for magpie: sign in with an SU8 API key, pick one of five lines, use the models it can call, and see plan allowance and balance",
   "type": "module",
   "main": "./index.mjs",
   "exports": "./index.mjs",
@@ -38,8 +38,8 @@
     "name": "SU8 Codes",
     "maxConcurrency": 8,
     "summary": {
-      "en": "SU8 Codes: sign in with an SU8 API key, use its models, see plan allowance and balance.",
-      "zh": "SU8 Codes：用 SU8 的 API Key 登录，使用这个 Key 能调用的模型，查看套餐额度与余额。"
+      "en": "SU8 Codes: sign in with an SU8 API key, pick one of five lines, use its models, and see plan allowance and balance.",
+      "zh": "SU8 Codes：用 SU8 的 API Key 登录，五条线路任选，使用这个 Key 能调用的模型，查看套餐额度与余额。"
     }
   }
 }

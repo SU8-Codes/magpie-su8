@@ -115,12 +115,45 @@ test("a request carries the key and names the agent's session as SU8 reads it", 
 test("the loader gives magpie a placeholder, and its fetch sends the key nowhere but SU8", async () => {
   const hooks = await plugin.Su8CodesPlugin()
   const o = await hooks.auth.loader(signedIn)
-  assert.equal(o.baseURL, `${I.ORIGIN}/v1`)
+  assert.equal(o.baseURL, "https://www.su8.codes/v1")
   assert.equal(o.apiKey, I.PLACEHOLDER)
   assert.notEqual(o.apiKey, KEY)
   await assert.rejects(o.fetch("https://evil.example/v1/messages", { method: "POST", body: "{}" }), /refusing to send the API key/)
   // the bare domain answers every request with a redirect that drops the key
   await assert.rejects(o.fetch("https://su8.codes/v1/messages", { method: "POST", body: "{}" }), /refusing to send the API key/)
+})
+
+test("the five lines, asked before the key and kept on the account", async () => {
+  assert.deepEqual(
+    Object.values(I.LINES).map((l) => l.origin),
+    ["https://www.su8.codes", "https://cn2.su8.codes", "https://hk.su8.codes", "https://jp.su8.codes", "https://us2.su8.codes"],
+  )
+  const hooks = await plugin.Su8CodesPlugin()
+  const [method] = hooks.auth.methods
+  // an api method with questions and no authorize of its own: magpie still asks the key itself
+  assert.equal(method.type, "api")
+  assert.equal(method.authorize, undefined)
+  assert.equal(method.prompts[0].type, "select")
+  assert.deepEqual(method.prompts[0].options.map((o) => o.value), ["main", "cn2", "hk", "jp", "us2"])
+  for (const [line, { origin }] of Object.entries(I.LINES)) {
+    const auth = { type: "api", key: KEY, metadata: { line } }
+    const o = await hooks.auth.loader(async () => auth)
+    assert.equal(o.baseURL, `${origin}/v1`)
+    // a key on one line is never sent to another
+    for (const other of Object.values(I.LINES)) {
+      if (other.origin !== origin) await assert.rejects(o.fetch(`${other.origin}/v1/messages`, { method: "POST", body: "{}" }), /refusing to send the API key/)
+    }
+  }
+})
+
+test("an account signed in before lines existed stays on the main line; an unknown line is refused", async () => {
+  assert.equal(I.originOf({ type: "api", key: KEY }), "https://www.su8.codes")
+  assert.throws(() => I.originOf({ type: "api", key: KEY, metadata: { line: "https://evil.example" } }), /Unknown SU8 line/)
+  const hooks = await plugin.Su8CodesPlugin()
+  const bad = async () => ({ type: "api", key: KEY, metadata: { line: "xx" } })
+  await assert.rejects(hooks.auth.loader(bad), /Unknown SU8 line/)
+  await assert.rejects(hooks.provider.models({ models: {} }, { auth: await bad() }), /Unknown SU8 line/)
+  assert.match((await hooks.auth.usage(bad)).error, /Unknown SU8 line/)
 })
 
 test("no sign-in: no loader, the given list, and usage says so", async () => {

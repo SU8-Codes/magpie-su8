@@ -5,7 +5,15 @@
 // function as a plugin, so helpers live on _internal at the end.
 
 const PROVIDER = "su8"
-const ORIGIN = "https://www.su8.codes"
+// the lines a key may be used on: the same service and account, reached through different networks
+const LINES = {
+  main: { origin: "https://www.su8.codes", label: "Main", hint: "Default", labels: { zh: "主站" }, hints: { zh: "默认" } },
+  cn2: { origin: "https://cn2.su8.codes", label: "CN2", hint: "For mainland China", labels: { zh: "CN2" }, hints: { zh: "中国大陆网络" } },
+  hk: { origin: "https://hk.su8.codes", label: "Hong Kong", hint: "", labels: { zh: "香港" } },
+  jp: { origin: "https://jp.su8.codes", label: "Japan", hint: "", labels: { zh: "日本" } },
+  us2: { origin: "https://us2.su8.codes", label: "United States", hint: "", labels: { zh: "美国" } },
+}
+const DEFAULT_LINE = "main"
 const ICON = "https://www.su8.codes/favicon.svg"
 const TIMEOUT_MS = 15_000
 const MESSAGES = "@ai-sdk/anthropic"
@@ -26,6 +34,14 @@ class Refused extends Error {
 
 function keyOf(auth) {
   return auth?.type === "api" && typeof auth.key === "string" && auth.key.trim() ? auth.key.trim() : undefined
+}
+
+/** the line an account signed in on; one signed in before lines existed is on the main line. */
+function originOf(auth) {
+  const line = auth?.metadata?.line ?? DEFAULT_LINE
+  const known = LINES[line]
+  if (!known) throw new Error(`Unknown SU8 line "${line}". Sign in to SU8 again and pick a line from the list.`)
+  return known.origin
 }
 
 /** a model that only draws. */
@@ -175,31 +191,50 @@ function fetchFor(origin, key) {
   }
 }
 
+// asked before the key; magpie keeps the choice as the account's metadata.line
+const LINE_PROMPT = {
+  type: "select",
+  key: "line",
+  message: "Line",
+  messages: { zh: "线路" },
+  options: Object.entries(LINES).map(([value, l]) => ({ value, label: l.label, labels: l.labels, hint: l.hint, ...(l.hints ? { hints: l.hints } : {}) })),
+}
+
 export async function Su8CodesPlugin() {
   return {
     config: async (cfg) => {
       cfg.provider ??= {}
-      cfg.provider[PROVIDER] ??= { name: "SU8 Codes", npm: CHAT, api: `${ORIGIN}/v1`, models: {} }
+      cfg.provider[PROVIDER] ??= { name: "SU8 Codes", npm: CHAT, api: `${LINES[DEFAULT_LINE].origin}/v1`, models: {} }
     },
     auth: {
       provider: PROVIDER,
       icon: ICON,
-      methods: [{ type: "api", label: "SU8 API key", placeholder: "su8-…" }],
+      methods: [{ type: "api", label: "SU8 API key", labels: { zh: "SU8 API Key" }, placeholder: "su8-…", prompts: [LINE_PROMPT] }],
       loader: async (getAuth) => {
-        const key = keyOf(await getAuth())
-        return key ? { baseURL: `${ORIGIN}/v1`, apiKey: PLACEHOLDER, fetch: fetchFor(ORIGIN, key) } : {}
+        const auth = await getAuth()
+        const key = keyOf(auth)
+        if (!key) return {}
+        const origin = originOf(auth)
+        return { baseURL: `${origin}/v1`, apiKey: PLACEHOLDER, fetch: fetchFor(origin, key) }
       },
-      usage: async (getAuth) => usageOf(ORIGIN, keyOf(await getAuth())),
+      usage: async (getAuth) => {
+        const auth = await getAuth()
+        try {
+          return await usageOf(originOf(auth), keyOf(auth))
+        } catch (e) {
+          return { error: e?.message ?? String(e), windows: [] }
+        }
+      },
     },
     provider: {
       id: PROVIDER,
       models: async (provider, { auth } = {}) => {
         const key = keyOf(auth)
-        return key ? listModels(ORIGIN, key) : provider.models
+        return key ? listModels(originOf(auth), key) : provider.models
       },
     },
   }
 }
 
 // for tests: an object, not a function, so magpie never runs it as a plugin
-export const _internal = { ORIGIN, PLACEHOLDER, SESSION_HEADER, npmOf, drawsOnly, levelsOf, modelOf, listModels, usageFrom, usageOf, fetchFor }
+export const _internal = { LINES, DEFAULT_LINE, LINE_PROMPT, PLACEHOLDER, SESSION_HEADER, originOf, npmOf, drawsOnly, levelsOf, modelOf, listModels, usageFrom, usageOf, fetchFor }
